@@ -1,0 +1,100 @@
+/* ── CinePulse Design System ────────────────────────────────────────────── */
+
+:root {
+  /* Colors - Premium AMOLED Dark */
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #141414;
+  --accent: #6366f1; /* Indigo-500 */
+  --accent-glow: rgba(99, 102, 241, 0.4);
+  --text-primary: #ffffff;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --border-muted: rgba(255, 255, 255, 0.08);
+  --border-active: rgba(99, 102, 241, 0.35);
+
+  /* Spacing */
+  --safe-area: 32px;
+  --nav-height: 80px;
+
+  /* Typography */
+  --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* ── Typography Utility ────────────────────────────────────────────────── */
+
+h1, h2, h3, h4 {
+  letter-spacing: -0.03em;
+  font-weight: 900;
+}
+
+.label-mini {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+/* ── Components ─────────────────────────────────────────────────────────── */
+
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-muted);
+}
+
+.glow-on-hover:hover {
+  box-shadow: 0 0 30px var(--accent-glow);
+  border-color: var(--accent);
+}
+
+/* ── Performance: HW Accelerated Classes ─────────────────────────────────── */
+
+.gpu-accelerated {
+  transform: translateZ(0);
+  will-change: transform, opacity;
+}
+
+img[loading="lazy"] {
+  opacity: 0;
+  transition: opacity 0.4s ease-out;
+}
+
+img.loaded {
+  opacity: 1;
+}
+
+/* ── Custom Scrollbar ──────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
