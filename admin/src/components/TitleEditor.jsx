@@ -29,14 +29,6 @@ const INITIAL_FORM = {
   synopsis: '',
   runtime: '',
   censor_rating: '',
-  audience_score: '',
-  cine_score: '',
-  dna_intensity: '',
-  dna_emotion: '',
-  dna_complexity: '',
-  dna_pace: '',
-  dna_darkness: '',
-  dna_spectacle: '',
 };
 
 function slugify(value) {
@@ -61,14 +53,6 @@ function toForm(title) {
     synopsis: title?.details?.synopsis ?? title?.synopsis ?? '',
     runtime: title?.details?.runtime ?? title?.runtime ?? '',
     censor_rating: title?.censor_rating ?? title?.classification?.rating ?? '',
-    audience_score: title?.audience_score ?? '',
-    cine_score: title?.cine_score ?? '',
-    dna_intensity: title?.dna_intensity ?? '',
-    dna_emotion: title?.dna_emotion ?? '',
-    dna_complexity: title?.dna_complexity ?? '',
-    dna_pace: title?.dna_pace ?? '',
-    dna_darkness: title?.dna_darkness ?? '',
-    dna_spectacle: title?.dna_spectacle ?? '',
   };
 }
 
@@ -105,21 +89,7 @@ function SectionCard({ id, title, description, children }) {
   );
 }
 
-function ScoreInput({ label, value, onChange, min = 0, max = 100, step = 1, hint }) {
-  return (
-    <Field label={label} hint={hint}>
-      <input
-        type="number"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={onChange}
-        className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none ring-cyan-400/50 focus:ring"
-      />
-    </Field>
-  );
-}
+// ScoreInput removed
 
 export default function TitleEditor() {
   const navigate = useNavigate();
@@ -219,14 +189,6 @@ export default function TitleEditor() {
       synopsis: form.synopsis || null,
       runtime: form.runtime || null,
       censor_rating: form.censor_rating || null,
-      audience_score: toNumberOrNull(form.audience_score),
-      cine_score: toNumberOrNull(form.cine_score),
-      dna_intensity: toNumberOrNull(form.dna_intensity),
-      dna_emotion: toNumberOrNull(form.dna_emotion),
-      dna_complexity: toNumberOrNull(form.dna_complexity),
-      dna_pace: toNumberOrNull(form.dna_pace),
-      dna_darkness: toNumberOrNull(form.dna_darkness),
-      dna_spectacle: toNumberOrNull(form.dna_spectacle),
     };
 
     try {
@@ -334,7 +296,6 @@ export default function TitleEditor() {
 
         <div className="flex flex-wrap gap-2 text-sm">
           <a className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-300 hover:bg-zinc-800" href="#core-metadata">Core Metadata</a>
-          <a className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-300 hover:bg-zinc-800" href="#dna-hype">DNA & Hype</a>
           <a className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-300 hover:bg-zinc-800" href="#genres">Genres</a>
           <a className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-300 hover:bg-zinc-800" href="#credits">Cast & Crew</a>
         </div>
@@ -482,71 +443,8 @@ export default function TitleEditor() {
             </SectionCard>
 
             <SectionCard
-              id="dna-hype"
-              title="2. DNA & Hype Scores"
-              description="Populate the title scoring fields that drive recommendation and presentation layers."
-            >
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <ScoreInput
-                  label="Cine Score"
-                  hint="0-100"
-                  value={form.cine_score}
-                  onChange={(event) => setForm((prev) => ({ ...prev, cine_score: event.target.value }))}
-                />
-                <ScoreInput
-                  label="Audience Score"
-                  hint="0-100"
-                  value={form.audience_score}
-                  onChange={(event) => setForm((prev) => ({ ...prev, audience_score: event.target.value }))}
-                />
-                <ScoreInput
-                  label="DNA Intensity"
-                  hint="0-10"
-                  max={10}
-                  value={form.dna_intensity}
-                  onChange={(event) => setForm((prev) => ({ ...prev, dna_intensity: event.target.value }))}
-                />
-                <ScoreInput
-                  label="DNA Emotion"
-                  hint="0-10"
-                  max={10}
-                  value={form.dna_emotion}
-                  onChange={(event) => setForm((prev) => ({ ...prev, dna_emotion: event.target.value }))}
-                />
-                <ScoreInput
-                  label="DNA Complexity"
-                  hint="0-10"
-                  max={10}
-                  value={form.dna_complexity}
-                  onChange={(event) => setForm((prev) => ({ ...prev, dna_complexity: event.target.value }))}
-                />
-                <ScoreInput
-                  label="DNA Pace"
-                  hint="0-10"
-                  max={10}
-                  value={form.dna_pace}
-                  onChange={(event) => setForm((prev) => ({ ...prev, dna_pace: event.target.value }))}
-                />
-                <ScoreInput
-                  label="DNA Darkness"
-                  hint="0-10"
-                  max={10}
-                  value={form.dna_darkness}
-                  onChange={(event) => setForm((prev) => ({ ...prev, dna_darkness: event.target.value }))}
-                />
-                <ScoreInput
-                  label="DNA Spectacle"
-                  hint="0-10"
-                  max={10}
-                  value={form.dna_spectacle}
-                  onChange={(event) => setForm((prev) => ({ ...prev, dna_spectacle: event.target.value }))}
-                />
-              </div>
-            </SectionCard>
-
-            <SectionCard
               id="genres"
-              title="3. Genres"
+              title="2. Genres"
               description="Genres are stored through the title_genres junction table and mirrored here as attachable tags."
             >
               <div className="flex flex-wrap gap-2">
@@ -594,7 +492,7 @@ export default function TitleEditor() {
 
             <SectionCard
               id="credits"
-              title="4. Cast & Crew"
+              title="3. Cast & Crew"
               description="Credits are maintained through title_credits and refreshed immediately after each mutation."
             >
               <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr_auto]">

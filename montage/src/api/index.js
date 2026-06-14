@@ -1,4 +1,8 @@
 import { getStatus } from '../engine/timeEngine';
+import { MOVIES } from '../../../movies.js';
+import { SHOWS } from '../../../backend/data/shows.js';
+import { PEOPLE } from '../../../people.js';
+import { GENRES } from '../../../genres.js';
 
 export const TYPE_MOVIE = 'movie';
 export const TYPE_SHOW = 'show';
@@ -15,6 +19,7 @@ const asNumber = (value, fallback = 0) => (Number.isFinite(Number(value)) ? Numb
 
 function normalizeTitle(title) {
   const media = title?.media ?? {};
+  const people = title?.people ?? {};
   const normalized = {
     ...title,
     releaseDate: title?.releaseDate ?? title?.release_date ?? null,
@@ -29,128 +34,89 @@ function normalizeTitle(title) {
       backdrop: title?.backdrop ?? media?.backdrop ?? null,
       trailer: title?.trailer ?? media?.trailer ?? null,
     },
+    details: {
+      ...(title?.details ?? {}),
+      synopsis: title?.details?.synopsis ?? title?.synopsis ?? '',
+      runtime: title?.details?.runtime ?? title?.runtime ?? null,
+    },
+    classification: {
+      ...(title?.classification ?? {}),
+      genres: asArray(title?.classification?.genres),
+      rating: title?.classification?.rating ?? title?.censor_rating ?? title?.rating ?? 'NR',
+    },
+    people: {
+      directorId: people.directorId ?? null,
+      composerId: people.composerId ?? null,
+      writerIds: asArray(people.writerIds),
+      castIds: asArray(people.castIds),
+    },
   };
 
   return normalized;
 }
 
-function getDnaSignals(title) {
-  const dna = title?.dna ?? {};
-  const metrics = title?.metrics ?? {};
-  const ratings = metrics?.ratings ?? {};
-  const cineScore = asNumber(title?.cine_score ?? ratings?.cineScore, 0);
-
-  const intensity = asNumber(title?.dna_intensity ?? dna?.energy, 0);
-  const complexity = asNumber(title?.dna_complexity ?? dna?.scale, 0);
-  const emotion = asNumber(title?.dna_emotion ?? dna?.mood, 0);
-  const pace = asNumber(title?.dna_pace ?? dna?.pace, 0);
-  const warmth = asNumber(dna?.warmth, 0);
-  const darkness = asNumber(title?.dna_darkness, Math.max(0, 10 - warmth));
-  const spectacle = asNumber(title?.dna_spectacle, Math.min(10, (complexity + intensity) / 2));
-
-  return { cineScore, intensity, complexity, emotion, darkness, spectacle, pace };
-}
-
 export function buildDnaCategories(masterTitles) {
   const titles = asArray(masterTitles).map(normalizeTitle);
   const cutoff = new Date('2026-04-05T00:00:00Z');
-  const hasGenre = (title, genreId) => title?.classification?.genres?.includes(genreId);
-  const topRated = titles
-    .slice()
-    .sort((a, b) => getDnaSignals(b).cineScore - getDnaSignals(a).cineScore);
 
-  const withFallback = (bucket) => {
-    const seen = new Set();
-    const merged = [];
+  // 1. Trending Movies (Highly popular movies)
+  const trendingMovies = titles
+    .filter((t) => t.type === 'movie')
+    .sort((a, b) => (b.metrics?.popularity ?? 0) - (a.metrics?.popularity ?? 0))
+    .slice(0, 10);
 
-    const add = (title) => {
-      if (!title?.id || seen.has(title.id)) return;
-      seen.add(title.id);
-      merged.push(title);
-    };
+  // 2. Latest Releases (Released recently)
+  const latestReleases = titles
+    .filter((t) => t.releaseDate && new Date(t.releaseDate) <= cutoff)
+    .sort((a, b) => b.year - a.year || new Date(b.releaseDate) - new Date(a.releaseDate))
+    .slice(0, 10);
 
-    bucket.forEach(add);
-    topRated.forEach(add);
+  // 3. Popular Shows (TV Shows sorted by popularity)
+  const popularShows = titles
+    .filter((t) => t.type === 'show')
+    .sort((a, b) => (b.metrics?.popularity ?? 0) - (a.metrics?.popularity ?? 0))
+    .slice(0, 10);
 
-    return merged.slice(0, 10);
-  };
+  // 4. Critically Acclaimed (Sorted by critic/cinescore or ratings)
+  const criticallyAcclaimed = titles
+    .sort((a, b) => (b.metrics?.ratings?.critic ?? 0) - (a.metrics?.ratings?.critic ?? 0))
+    .slice(0, 10);
 
-  const categories = [
+  // 5. Recently Added (By release date or year desc)
+  const recentlyAdded = titles
+    .sort((a, b) => b.year - a.year)
+    .slice(0, 10);
+
+  return [
     {
-      id: 'masterpieces',
-      label: 'The Masterpieces',
-      titles: titles.filter((title) => getDnaSignals(title).cineScore >= 9.5),
+      id: 'trending_movies',
+      label: 'Trending Movies',
+      titles: trendingMovies,
     },
     {
-      id: 'high_octane_action',
-      label: 'High-Octane Action',
-      titles: titles.filter((title) => hasGenre(title, 'action') && getDnaSignals(title).intensity > 7),
+      id: 'latest_releases',
+      label: 'Latest Releases',
+      titles: latestReleases,
     },
     {
-      id: 'mind_bending_scifi',
-      label: 'Mind-Bending Sci-Fi',
-      titles: titles.filter((title) => hasGenre(title, 'sci_fi') && getDnaSignals(title).complexity > 7),
+      id: 'popular_shows',
+      label: 'Popular TV Shows',
+      titles: popularShows,
     },
     {
-      id: 'emotional_epics',
-      label: 'Emotional Epics',
-      titles: titles.filter((title) => hasGenre(title, 'epic') && getDnaSignals(title).emotion > 7),
+      id: 'critically_acclaimed',
+      label: 'Critically Acclaimed',
+      titles: criticallyAcclaimed,
     },
     {
-      id: 'dark_gritty',
-      label: 'Dark & Gritty',
-      titles: titles.filter((title) => getDnaSignals(title).darkness > 8),
-    },
-    {
-      id: 'pure_spectacle',
-      label: 'Pure Spectacle',
-      titles: titles.filter((title) => getDnaSignals(title).spectacle > 8),
-    },
-    {
-      id: 'fast_paced_thrills',
-      label: 'Fast-Paced Thrills',
-      titles: titles.filter((title) => getDnaSignals(title).pace > 8),
-    },
-    {
-      id: 'upcoming_anticipation',
-      label: 'Upcoming Anticipation',
-      titles: titles.filter((title) => {
-        if (!title?.releaseDate) return false;
-        const release = new Date(`${title.releaseDate}T00:00:00Z`);
-        return release > cutoff;
-      }),
-    },
-    {
-      id: 'cinematic_classics',
-      label: 'Cinematic Classics',
-      titles: titles.filter((title) => asNumber(title?.year, 9999) < 2000),
-    },
-    {
-      id: 'hidden_gems',
-      label: 'Hidden Gems',
-      titles: titles.filter((title) => {
-        const signals = getDnaSignals(title);
-        return signals.cineScore < 8.5 && signals.complexity > 8;
-      }),
+      id: 'recently_added',
+      label: 'Recently Added',
+      titles: recentlyAdded,
     },
   ];
-
-  return categories.map((category) => {
-    const ranked = category.titles
-      .slice()
-      .sort((a, b) => getDnaSignals(b).cineScore - getDnaSignals(a).cineScore);
-
-    return {
-      ...category,
-      titles: withFallback(ranked),
-    };
-  });
 }
 
 async function request(path) {
-  if (!BASE_URL) {
-    throw new Error('VITE_API_URL is missing from montage/.env');
-  }
 
   const response = await fetch(`${BASE_URL}${path}`, {
     headers: { Accept: 'application/json' },
@@ -164,28 +130,52 @@ async function request(path) {
   return response.json();
 }
 
+function loadLocalCatalog() {
+  const normalizedTitles = [...asArray(MOVIES), ...asArray(SHOWS)].map(normalizeTitle);
+  const genres = Object.entries(GENRES).map(([id, name]) => ({ id, name }));
+  const people = asArray(PEOPLE).map((person) => ({
+    ...person,
+    imageUrl: person.imageUrl ?? person.image_url ?? person.image ?? null,
+    image_url: person.image_url ?? person.imageUrl ?? person.image ?? null,
+    roles: asArray(person.roles),
+  }));
+
+  return {
+    titles: normalizedTitles,
+    people,
+    genres,
+    categories: buildDnaCategories(normalizedTitles),
+    titleLookup: new Map(normalizedTitles.map((title) => [title.id, title])),
+    peopleLookup: new Map(people.map((person) => [person.id, person])),
+  };
+}
+
 async function loadCatalog() {
   if (!catalogCache.promise) {
-    catalogCache.promise = Promise.all([
-      request('/titles'),
-      request('/people'),
-      request('/genres'),
-    ])
-      .then(([titles, people, genres]) => {
+    catalogCache.promise = (async () => {
+      try {
+        const [categories, titles, people, genres] = await Promise.all([
+          request('/home'),
+          request('/titles').catch(() => []),
+          request('/people').catch(() => []),
+          request('/genres').catch(() => []),
+        ]);
+
         const normalizedTitles = asArray(titles).map(normalizeTitle);
-        return {
+        const catalog = {
           titles: normalizedTitles,
           people: asArray(people),
           genres: asArray(genres),
-          categories: buildDnaCategories(normalizedTitles),
+          categories,
           titleLookup: new Map(normalizedTitles.map((title) => [title.id, title])),
           peopleLookup: new Map(asArray(people).map((person) => [person.id, person])),
         };
-      })
-      .catch((error) => {
-        catalogCache.promise = null;
-        throw error;
-      });
+
+        return catalog;
+      } catch {
+        return loadLocalCatalog();
+      }
+    })();
   }
 
   catalogCache.value = await catalogCache.promise;
@@ -197,6 +187,7 @@ export async function getCatalog() {
 }
 
 export async function getHealth() {
+  if (!BASE_URL) return { ok: true, database: 'local' };
   return request('/health');
 }
 
@@ -234,10 +225,10 @@ export async function getFilmography(personId) {
   const catalog = await loadCatalog();
   return catalog.titles
     .filter((title) =>
-      title.people.directorId === personId ||
-      title.people.composerId === personId ||
-      title.people.writerIds.includes(personId) ||
-      title.people.castIds.includes(personId),
+      title.people?.directorId === personId ||
+      title.people?.composerId === personId ||
+      asArray(title.people?.writerIds).includes(personId) ||
+      asArray(title.people?.castIds).includes(personId),
     )
     .sort((a, b) => b.year - a.year);
 }
@@ -270,7 +261,7 @@ export const api = {
     return titles.filter((title) => getStatus(title) === 'upcoming');
   },
   getById: async (id) => {
-    const title = await request(`/titles/${encodeURIComponent(id)}`);
+    const title = await request(`/title/${encodeURIComponent(id)}`);
     if (!title) throw new Error('Title not found');
     return normalizeTitle(title);
   },
@@ -289,10 +280,10 @@ export const api = {
     const catalog = await loadCatalog();
     return catalog.titles.filter((title) =>
       title.title.toLowerCase().includes(q) ||
-      title.classification.genres.some((genreId) => genreId.toLowerCase().includes(q)) ||
-      title.people.directorId?.toLowerCase().includes(q) ||
-      title.people.writerIds.some((id) => id.toLowerCase().includes(q)) ||
-      title.people.castIds.some((id) => id.toLowerCase().includes(q)),
+      asArray(title.classification?.genres).some((genreId) => genreId.toLowerCase().includes(q)) ||
+      title.people?.directorId?.toLowerCase().includes(q) ||
+      asArray(title.people?.writerIds).some((id) => id.toLowerCase().includes(q)) ||
+      asArray(title.people?.castIds).some((id) => id.toLowerCase().includes(q)),
     );
   },
 };

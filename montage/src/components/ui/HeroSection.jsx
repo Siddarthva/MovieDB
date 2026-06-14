@@ -9,22 +9,18 @@ export default function HeroSection({ titles, onNavigate }) {
   const [idx, setIdx] = useState(0);
 
   useEffect(() => {
+    if (titles.length <= 1) return undefined;
     const t = setInterval(() => setIdx(p => (p + 1) % titles.length), 7000);
     return () => clearInterval(t);
   }, [titles.length]);
 
-  // Reset index if it goes out of bounds after a titles change
-  useEffect(() => {
-    if (idx >= titles.length && titles.length > 0) setIdx(0);
-  }, [titles.length, idx]);
-
-  const current = titles[idx];
+  const safeIndex = titles.length > 0 ? Math.min(idx, titles.length - 1) : 0;
+  const current = titles[safeIndex];
   if (!current) return null;
 
   // ── New schema accessors ────────────────────────────────────────────────────
   const backdrop = current.media?.backdrop;
   const synopsis = current.details?.synopsis;
-  const ratings  = current.metrics?.ratings ?? {};
 
   const typeLabel = current.type === 'show'
     ? (current.showMeta?.format === 'Anime' ? 'Anime Series' : 'Series')
@@ -97,7 +93,7 @@ export default function HeroSection({ titles, onNavigate }) {
         {/* Dot nav */}
         <div style={{ display: 'flex', gap: '5px', marginTop: '24px' }}>
           {titles.map((_, i) => (
-            <button key={i} onClick={() => setIdx(i)} style={{ width: i === idx ? '22px' : '7px', height: '7px', borderRadius: '4px', background: i === idx ? '#ffffff' : 'rgba(255,255,255,0.2)', border: 'none', cursor: 'pointer', padding: 0, transition: 'all 0.35s ease' }} />
+            <button key={i} onClick={() => setIdx(i)} style={{ width: i === safeIndex ? '22px' : '7px', height: '7px', borderRadius: '4px', background: i === safeIndex ? '#ffffff' : 'rgba(255,255,255,0.2)', border: 'none', cursor: 'pointer', padding: 0, transition: 'all 0.35s ease' }} />
           ))}
         </div>
       </div>

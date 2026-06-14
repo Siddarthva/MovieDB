@@ -15,6 +15,31 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+const memoryCache = new Map();
+const cacheGet = (key) => {
+  const item = memoryCache.get(key);
+  if (!item) return null;
+  if (Date.now() > item.expiresAt) {
+    memoryCache.delete(key);
+    return null;
+  }
+  return item.value;
+};
+const cacheSet = (key, value, ttlMs = 60000) => {
+  memoryCache.set(key, {
+    value,
+    expiresAt: Date.now() + ttlMs,
+  });
+};
+const cacheInvalidate = (key) => {
+  memoryCache.delete(key);
+};
+const cacheInvalidateAll = () => {
+  memoryCache.clear();
+};
+
+
 const app = express();
 app.use(compression());
 const port = Number(process.env.PORT ?? 5000);
@@ -63,26 +88,11 @@ const isMissingColumnError = (error) => {
 };
 
 const TITLE_BASE_SELECT = 'id, title, type, year, release_date, poster, backdrop, trailer, synopsis, runtime';
-const TITLE_OPTIONAL_SELECT = ', censor_rating, audience_score, cine_score, dna_intensity, dna_emotion, dna_complexity, dna_pace, dna_darkness, dna_spectacle';
+const TITLE_OPTIONAL_SELECT = ', censor_rating';
 const TITLE_RELATION_SELECT = ', title_genres(title_id, genre_id, genres:genre_id(id, name))';
 
 function buildTitleSelect(includeOptionalFields = true, includeRelations = false) {
   return `${TITLE_BASE_SELECT}${includeOptionalFields ? TITLE_OPTIONAL_SELECT : ''}${includeRelations ? TITLE_RELATION_SELECT : ''}`;
-}
-
-function stripOptionalTitleFields(row) {
-  return {
-    id: row.id,
-    title: row.title,
-    type: row.type,
-    year: row.year,
-    release_date: row.release_date,
-    poster: row.poster,
-    backdrop: row.backdrop,
-    trailer: row.trailer,
-    synopsis: row.synopsis,
-    runtime: row.runtime,
-  };
 }
 
 const hashString = (value) => {
@@ -99,36 +109,6 @@ const buildLookup = (rows, key) => rows.reduce((map, row) => {
   if (value) map.set(value, row);
   return map;
 }, new Map());
-
-const deriveMetrics = (row, genres) => {
-  const seed = hashString(row.id);
-  const genreWeight = Math.min((genres?.length ?? 0) * 3, 18);
-  const typeWeight = row.type === 'show' ? 6 : 0;
-  const eraWeight = row.year >= 2020 ? 8 : row.year >= 2010 ? 5 : 2;
-  const popularity = Math.min(100, 54 + (seed % 22) + genreWeight + typeWeight + eraWeight);
-  const critic = Math.min(100, 60 + (seed % 25) + Math.min(genres?.length ?? 0, 4) * 2);
-  const audience = Math.min(100, 62 + ((seed >> 3) % 24) + typeWeight);
-  const cineScore = Number(((critic * 0.35 + audience * 0.25 + popularity * 0.4) / 10).toFixed(1));
-
-  return {
-    popularity,
-    ratings: { critic, audience, cineScore },
-  };
-};
-
-const deriveDna = (row, genres) => {
-  const seed = hashString(`${row.id}:${genres.join('|')}`);
-  const typeOffset = row.type === 'show' ? 2 : 0;
-  const genreCount = Math.max(genres.length, 1);
-
-  return {
-    energy: 4 + (seed % 5),
-    mood: 4 + ((seed >> 3) % 5),
-    scale: 4 + Math.min(genreCount, 5) + typeOffset,
-    pace: 4 + ((seed >> 6) % 5),
-    warmth: 4 + ((seed >> 9) % 5),
-  };
-};
 
 function normalizeGenreRelations(rows) {
   return asArray(rows)
@@ -229,7 +209,6 @@ function normalizeTitle(row, joinedCredits = null) {
   const credits = normalizeCredits(creditRows);
   const creditGroups = groupCredits(credits);
   const pointers = derivePeoplePointers(credits);
-  const cineScore = asNumber(row.cine_score, null);
 
   const title = {
     id: asString(row.id),
@@ -237,14 +216,6 @@ function normalizeTitle(row, joinedCredits = null) {
     title: asString(row.title),
     year: asNumber(row.year),
     releaseDate: asString(row.release_date),
-    audience_score: asNumber(row.audience_score),
-    cine_score: asNumber(row.cine_score),
-    dna_intensity: asNumber(row.dna_intensity),
-    dna_emotion: asNumber(row.dna_emotion),
-    dna_complexity: asNumber(row.dna_complexity),
-    dna_pace: asNumber(row.dna_pace),
-    dna_darkness: asNumber(row.dna_darkness),
-    dna_spectacle: asNumber(row.dna_spectacle),
     censor_rating: asString(row.censor_rating ?? row.rating),
     media: {
       poster: asString(row.poster),
@@ -270,9 +241,6 @@ function normalizeTitle(row, joinedCredits = null) {
     showMeta: null,
     episodes: [],
   };
-
-  title.metrics = deriveMetrics(title, genres);
-  title.dna = deriveDna(title, genres);
 
   return title;
 }
@@ -440,6 +408,24 @@ let catalogPromise = null;
 
 function invalidateCatalog() {
   catalogPromise = null;
+  cacheInvalidateAll();
+}
+
+function invalidateTitleCache(titleId = null) {
+  catalogPromise = null;
+  cacheInvalidate('titles_all');
+  cacheInvalidate('home');
+  if (titleId) {
+    cacheInvalidate(`title_detail_${titleId}`);
+  }
+}
+
+function invalidatePeopleCache(personId = null) {
+  catalogPromise = null;
+  cacheInvalidate('people');
+  if (personId) {
+    cacheInvalidate(`person_detail_${personId}`);
+  }
 }
 
 async function getCatalog() {
@@ -449,10 +435,83 @@ async function getCatalog() {
   return catalogPromise;
 }
 
+const allowedOrigins = [
+  'http://localhost:5174',
+  'http://localhost:5175',
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
 app.use(cors({
-  origin: ['http://localhost:5174', 'http://localhost:5175'],
+  origin: allowedOrigins,
 }));
 app.use(express.json());
+
+app.get('/api/home', async (req, res, next) => {
+  try {
+    const cached = cacheGet('home');
+    if (cached) {
+      res.json(cached);
+      return;
+    }
+
+    const { data: rawTitles, error } = await supabase
+      .from('titles')
+      .select('id, title, type, year, release_date, poster, backdrop, censor_rating')
+      .order('year', { ascending: false });
+
+    if (error) throw error;
+
+    const titles = (rawTitles ?? []).map((row) => normalizeTitle(row));
+
+    const cutoff = new Date('2026-04-05T00:00:00Z');
+
+    const trending = titles
+      .filter((t) => t.type === 'movie')
+      .sort((a, b) => (b.metrics?.popularity ?? 0) - (a.metrics?.popularity ?? 0))
+      .slice(0, 10);
+
+    const latest = titles
+      .filter((t) => t.releaseDate && new Date(t.releaseDate) <= cutoff)
+      .sort((a, b) => b.year - a.year || new Date(b.releaseDate) - new Date(a.releaseDate))
+      .slice(0, 10);
+
+    const shows = titles
+      .filter((t) => t.type === 'show')
+      .sort((a, b) => (b.metrics?.popularity ?? 0) - (a.metrics?.popularity ?? 0))
+      .slice(0, 10);
+
+    const acclaimed = titles
+      .sort((a, b) => (b.metrics?.ratings?.critic ?? 0) - (a.metrics?.ratings?.critic ?? 0))
+      .slice(0, 10);
+
+    const recent = titles
+      .sort((a, b) => b.year - a.year)
+      .slice(0, 10);
+
+    const pruneHomeTitle = (t) => ({
+      id: t.id,
+      title: t.title,
+      poster: t.poster ?? t.media?.poster ?? null,
+      backdrop: t.backdrop ?? t.media?.backdrop ?? null,
+      censor_rating: t.censor_rating ?? t.classification?.rating ?? 'NR',
+      year: t.year,
+      type: t.type
+    });
+
+    const result = [
+      { id: 'trending_movies', label: 'Trending Movies', titles: trending.map(pruneHomeTitle) },
+      { id: 'latest_releases', label: 'Latest Releases', titles: latest.map(pruneHomeTitle) },
+      { id: 'popular_shows', label: 'Popular TV Shows', titles: shows.map(pruneHomeTitle) },
+      { id: 'critically_acclaimed', label: 'Critically Acclaimed', titles: acclaimed.map(pruneHomeTitle) },
+      { id: 'recently_added', label: 'Recently Added', titles: recent.map(pruneHomeTitle) },
+    ];
+
+    cacheSet('home', result, 300000); // 5 minutes TTL
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get('/api/health', async (req, res) => {
   try {
@@ -474,9 +533,16 @@ app.get('/api/health', async (req, res) => {
 
 app.get('/api/genres', async (req, res, next) => {
   try {
+    const cached = cacheGet('genres');
+    if (cached) {
+      res.json(cached);
+      return;
+    }
     const { data, error } = await supabase.from('genres').select('id, name').order('name');
     if (error) throw error;
-    res.json((data ?? []).map((genre) => ({ id: asString(genre.id), name: asString(genre.name) })).filter((genre) => genre.id));
+    const result = (data ?? []).map((genre) => ({ id: asString(genre.id), name: asString(genre.name) })).filter((genre) => genre.id);
+    cacheSet('genres', result, 600000);
+    res.json(result);
   } catch (error) {
     next(error);
   }
@@ -484,8 +550,15 @@ app.get('/api/genres', async (req, res, next) => {
 
 app.get('/api/people', async (req, res, next) => {
   try {
+    const cached = cacheGet('people');
+    if (cached) {
+      res.json(cached);
+      return;
+    }
     const peopleRows = await fetchPeopleRows();
-    res.json(peopleRows.map(normalizePerson).filter((person) => person.id));
+    const result = peopleRows.map(normalizePerson).filter((person) => person.id);
+    cacheSet('people', result, 600000);
+    res.json(result);
   } catch (error) {
     next(error);
   }
@@ -541,7 +614,7 @@ app.post('/api/people', async (req, res, next) => {
 
     const data = await insertPerson(row);
 
-    invalidateCatalog();
+    invalidatePeopleCache(row.id);
     res.status(201).json(normalizePerson(data));
   } catch (error) {
     next(error);
@@ -563,7 +636,7 @@ app.put('/api/people/:id', async (req, res, next) => {
 
     const data = await updatePersonById(personId, payload);
 
-    invalidateCatalog();
+    invalidatePeopleCache(personId);
     res.json(normalizePerson(data));
   } catch (error) {
     next(error);
@@ -585,7 +658,7 @@ app.patch('/api/people/:id', async (req, res, next) => {
 
     const data = await updatePersonById(personId, payload);
 
-    invalidateCatalog();
+    invalidatePeopleCache(personId);
     res.json(normalizePerson(data));
   } catch (error) {
     next(error);
@@ -608,7 +681,7 @@ app.delete('/api/people/:id', async (req, res, next) => {
       .eq('id', personId);
     if (personError) throw personError;
 
-    invalidateCatalog();
+    invalidatePeopleCache(personId);
     res.status(204).send();
   } catch (error) {
     next(error);
@@ -617,27 +690,51 @@ app.delete('/api/people/:id', async (req, res, next) => {
 
 app.get('/api/titles', async (req, res, next) => {
   try {
+    const cached = cacheGet('titles_all');
+    if (cached) {
+      res.json(cached);
+      return;
+    }
     const { data, error } = await supabase
       .from('titles')
-      .select(buildTitleSelect(true, false))
+      .select('id, title, type, year, poster, genre')
       .order('year', { ascending: false });
 
-    const fallback = error && isMissingColumnError(error)
-      ? await supabase.from('titles').select(buildTitleSelect(false, false)).order('year', { ascending: false })
-      : { data, error };
+    if (error) throw error;
 
-    if (fallback.error) throw fallback.error;
+    const titles = (data ?? []).map((row) => ({
+      id: asString(row.id),
+      title: asString(row.title),
+      type: asString(row.type),
+      year: asNumber(row.year),
+      poster: asString(row.poster),
+      classification: {
+        genres: row.genre ? [row.genre] : [],
+        rating: 'NR'
+      },
+      people: {
+        directorId: null,
+        writerIds: [],
+        castIds: []
+      }
+    })).filter((title) => title.id);
 
-    const titles = (fallback.data ?? []).map((row) => normalizeTitle(row)).filter((title) => title.id);
+    cacheSet('titles_all', titles, 60000);
     res.json(titles);
   } catch (error) {
     next(error);
   }
 });
 
-app.get('/api/titles/:id', async (req, res, next) => {
+const getTitleDetail = async (req, res, next) => {
   try {
     const titleId = req.params.id;
+    const cacheKey = `title_detail_${titleId}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+      res.json(cached);
+      return;
+    }
 
     const [titleRes, creditsRes] = await Promise.all([
       supabase
@@ -668,11 +765,15 @@ app.get('/api/titles/:id', async (req, res, next) => {
     }
 
     const title = normalizeTitle(titleResFallback.data, creditsRes.data ?? []);
+    cacheSet(cacheKey, title, 60000); // 1 min TTL
     res.json(title);
   } catch (error) {
     next(error);
   }
-});
+};
+
+app.get('/api/title/:id', getTitleDetail);
+app.get('/api/titles/:id', getTitleDetail);
 
 app.get('/api/titles/:id/genres', async (req, res, next) => {
   try {
@@ -727,7 +828,7 @@ app.post('/api/titles/:id/genres', async (req, res, next) => {
 
     if (fetchError) throw fetchError;
 
-    invalidateCatalog();
+    invalidateTitleCache(titleId);
     res.status(201).json(normalizeGenreRelations(data));
   } catch (error) {
     next(error);
@@ -751,7 +852,7 @@ app.delete('/api/titles/:titleId/genres/:genreId', async (req, res, next) => {
 
     if (error) throw error;
 
-    invalidateCatalog();
+    invalidateTitleCache(titleId);
     res.status(204).send();
   } catch (error) {
     next(error);
@@ -796,7 +897,7 @@ app.post('/api/titles/:id/credits', async (req, res, next) => {
 
     if (error) throw error;
 
-    invalidateCatalog();
+    invalidateTitleCache(titleId);
 
     const rows = await selectTitleCreditsWithPeople(titleId);
     const credits = normalizeCredits(rows);
@@ -823,7 +924,7 @@ app.delete('/api/titles/:titleId/credits/:personId', async (req, res, next) => {
 
     if (error) throw error;
 
-    invalidateCatalog();
+    invalidateTitleCache(titleId);
     res.status(204).send();
   } catch (error) {
     next(error);
@@ -851,7 +952,7 @@ app.delete('/api/titles/:id/credits', async (req, res, next) => {
 
     if (error) throw error;
 
-    invalidateCatalog();
+    invalidateTitleCache(titleId);
     res.status(204).send();
   } catch (error) {
     next(error);
@@ -873,14 +974,6 @@ app.post('/api/titles', async (req, res, next) => {
       synopsis: asString(payload.synopsis),
       runtime: asString(payload.runtime),
       censor_rating: asString(payload.censor_rating ?? payload.censorRating),
-      audience_score: asNumber(payload.audience_score ?? payload.audienceScore),
-      cine_score: asNumber(payload.cine_score ?? payload.cineScore),
-      dna_intensity: asNumber(payload.dna_intensity ?? payload.dnaIntensity),
-      dna_emotion: asNumber(payload.dna_emotion ?? payload.dnaEmotion),
-      dna_complexity: asNumber(payload.dna_complexity ?? payload.dnaComplexity),
-      dna_pace: asNumber(payload.dna_pace ?? payload.dnaPace),
-      dna_darkness: asNumber(payload.dna_darkness ?? payload.dnaDarkness),
-      dna_spectacle: asNumber(payload.dna_spectacle ?? payload.dnaSpectacle),
     };
 
     if (!row.id || !row.title || !row.type) {
@@ -894,17 +987,9 @@ app.post('/api/titles', async (req, res, next) => {
       .select('*')
       .single();
 
-    if (response.error && isMissingColumnError(response.error)) {
-      response = await supabase
-        .from('titles')
-        .insert(stripOptionalTitleFields(row))
-        .select('*')
-        .single();
-    }
-
     if (response.error) throw response.error;
 
-    invalidateCatalog();
+    invalidateTitleCache(row.id);
     res.status(201).json(response.data);
   } catch (error) {
     next(error);
@@ -925,14 +1010,6 @@ app.patch('/api/titles/:id', async (req, res, next) => {
       synopsis: asString(payload.synopsis),
       runtime: asString(payload.runtime),
       censor_rating: asString(payload.censor_rating ?? payload.censorRating),
-      audience_score: asNumber(payload.audience_score ?? payload.audienceScore),
-      cine_score: asNumber(payload.cine_score ?? payload.cineScore),
-      dna_intensity: asNumber(payload.dna_intensity ?? payload.dnaIntensity),
-      dna_emotion: asNumber(payload.dna_emotion ?? payload.dnaEmotion),
-      dna_complexity: asNumber(payload.dna_complexity ?? payload.dnaComplexity),
-      dna_pace: asNumber(payload.dna_pace ?? payload.dnaPace),
-      dna_darkness: asNumber(payload.dna_darkness ?? payload.dnaDarkness),
-      dna_spectacle: asNumber(payload.dna_spectacle ?? payload.dnaSpectacle),
     };
 
     const cleanedPatch = Object.fromEntries(
@@ -951,18 +1028,9 @@ app.patch('/api/titles/:id', async (req, res, next) => {
       .select('*')
       .single();
 
-    if (response.error && isMissingColumnError(response.error)) {
-      response = await supabase
-        .from('titles')
-        .update(stripOptionalTitleFields(cleanedPatch))
-        .eq('id', req.params.id)
-        .select('*')
-        .single();
-    }
-
     if (response.error) throw response.error;
 
-    invalidateCatalog();
+    invalidateTitleCache(req.params.id);
     res.json(response.data);
   } catch (error) {
     next(error);
@@ -991,7 +1059,7 @@ app.delete('/api/titles/:id', async (req, res, next) => {
       .eq('id', titleId);
     if (titleError) throw titleError;
 
-    invalidateCatalog();
+    invalidateTitleCache(titleId);
     res.status(204).send();
   } catch (error) {
     next(error);

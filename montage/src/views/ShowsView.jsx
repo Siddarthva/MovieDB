@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { PlayCircle, Tv, Loader2, SlidersHorizontal } from 'lucide-react';
+import { Loader2, SlidersHorizontal } from 'lucide-react';
 
 import { useTitles } from '../hooks/useTitles';
 import { filterEngine } from '../engine/filterEngine';
@@ -11,6 +11,12 @@ export default function ShowsView({ onNavigate }) {
   const { data: shows, loading, error } = useTitles('show');
   const [panelOpen, setPanelOpen] = useState(false);
   const [filter, setFilter] = useState('all');
+
+  const genres = useMemo(() => {
+    const ids = new Set();
+    shows.forEach((show) => show.classification?.genres?.forEach((genre) => ids.add(genre)));
+    return ['all', ...Array.from(ids).sort()];
+  }, [shows]);
 
   const filteredShows = useMemo(() => {
     return filterEngine.byGenre(shows, filter);
@@ -47,6 +53,37 @@ export default function ShowsView({ onNavigate }) {
       </div>
 
       {/* Grid */}
+      {error && (
+        <p style={{ color: '#fbbf24', margin: '-16px 0 24px', fontSize: '13px' }}>
+          Showing bundled catalog while the live API reconnects.
+        </p>
+      )}
+
+      {panelOpen && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', margin: '-16px 0 28px' }}>
+          {genres.map((genre) => (
+            <button
+              key={genre}
+              type="button"
+              onClick={() => setFilter(genre)}
+              style={{
+                padding: '7px 12px',
+                borderRadius: '8px',
+                border: filter === genre ? '1px solid rgba(129,140,248,0.55)' : '1px solid rgba(255,255,255,0.08)',
+                background: filter === genre ? 'rgba(99,102,241,0.18)' : 'rgba(255,255,255,0.04)',
+                color: filter === genre ? '#c7d2fe' : '#9ca3af',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: 700,
+                textTransform: 'capitalize',
+              }}
+            >
+              {genre.replace(/_/g, ' ')}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(188px, 1fr))',

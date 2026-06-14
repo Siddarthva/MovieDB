@@ -1,11 +1,12 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { getHybridRecommendations } from '../engine/recommendationEngine';
 import TitleCard from '../components/ui/TitleCard';
 import TitleHero from '../components/ui/TitleHero';
 import { useCatalog } from '../hooks/useCatalog';
+import { api } from '../api';
 
 class TrailerModalBoundary extends React.Component {
   constructor(props) {
@@ -118,13 +119,43 @@ function PersonAvatar({ imageUrl, name }) {
 }
 
 export default function TitleView({ titleId, onNavigate }) {
-  const { titles, people, loading, error } = useCatalog();
+  const { titles, people, loading: catalogLoading, error: catalogError } = useCatalog();
+  const [title, setTitle] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(true);
+  const [detailError, setDetailError] = useState(null);
   const [isTrailerOpen, setIsTrailerOpen] = useState(false);
-  const title = useMemo(() => titles.find((item) => item.id === titleId) ?? null, [titles, titleId]);
+
   const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
 
+  useEffect(() => {
+    let active = true;
+    setDetailLoading(true);
+    setDetailError(null);
+
+    api.getById(titleId)
+      .then((data) => {
+        if (active) {
+          setTitle(data);
+          setDetailLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setDetailError(err);
+          setDetailLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [titleId]);
+
+  const loading = catalogLoading || detailLoading;
+  const error = catalogError || detailError;
+
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-white">Loading Database...</div>;
+    return <div className="min-h-screen flex items-center justify-center text-white">Loading Details...</div>;
   }
 
   if (error || !title) {
@@ -249,7 +280,6 @@ export default function TitleView({ titleId, onNavigate }) {
       <div className="max-w-7xl mx-auto px-6 md:px-12 lg:px-16 w-full mt-4 space-y-12">
         {recs.length > 0 && (
           <section>
-            <p style={{ fontSize: '12px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>DNA Match</p>
             <h2 style={{ fontSize: '20px', fontWeight: 700, color: 'white', letterSpacing: '-0.02em', margin: '0 0 20px' }}>Similar Titles</h2>
             <div style={{ display: 'flex', gap: '18px', overflowX: 'auto', paddingBottom: '12px', scrollbarWidth: 'none' }}>
               {recs.map((r) => <TitleCard key={r.id} title={r} onNavigate={onNavigate} showMatchReason inCarousel={false} />)}

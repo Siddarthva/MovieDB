@@ -1,5 +1,4 @@
-// Recommendation engine — DNA similarity + genre overlap + collaboration graph
-import { computeDNASimilarity } from './dnaEngine';
+// Recommendation engine — genre overlap + collaboration graph
 
 export function getHybridRecommendations(title, allTitles, limit = 6) {
   const titleGenres = title.classification?.genres ?? [];
@@ -11,18 +10,16 @@ export function getHybridRecommendations(title, allTitles, limit = 6) {
       const candidateGenres = candidate.classification?.genres ?? [];
       const candidatePeople = candidate.people ?? {};
 
-      const dnaScore   = computeDNASimilarity(title.dna, candidate.dna);
       const genreScore = titleGenres.filter(g => candidateGenres.includes(g)).length /
                          Math.max(titleGenres.length, 1);
       const collab     =
         (titlePeople.directorId && titlePeople.directorId === candidatePeople.directorId ? 0.3 : 0) +
         (titlePeople.castIds?.some(id => candidatePeople.castIds?.includes(id)) ? 0.2 : 0);
 
-      const total = dnaScore * 0.5 + genreScore * 0.3 + collab;
+      const total = genreScore * 0.6 + collab * 0.4;
 
       const matchReason =
-        dnaScore   > 0.8 ? `${Math.round(dnaScore * 100)}% DNA match` :
-        genreScore > 0.5 ? 'Shared genre DNA' :
+        genreScore > 0.5 ? 'Similar genre profile' :
         collab     > 0   ? 'Same creative team' :
                            `${Math.round(total * 100)}% match`;
 

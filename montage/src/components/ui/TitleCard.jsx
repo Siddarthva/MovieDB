@@ -44,12 +44,11 @@ const TitleCard = memo(function TitleCard({
 
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [isTouchDevice, isTouchExpanded]);
+  }, [isTouchDevice, isTouchExpanded, onHoverChange]);
 
   // ── New schema accessors ────────────────────────────────────────────────────
   const poster = title?.posterUrl ?? title?.media?.poster ?? null;
   const backdrop = title?.backdropUrl ?? title?.media?.backdrop ?? null;
-  const synopsis = title?.details?.synopsis ?? title?.synopsis ?? '';
   const censorRating = title?.censor_rating ?? title?.classification?.rating ?? title?.rating ?? 'NR';
 
   const isShow       = title.type === 'show';

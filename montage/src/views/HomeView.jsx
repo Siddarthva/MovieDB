@@ -33,13 +33,9 @@ export default function HomeView({ onNavigate }) {
   );
 
   useEffect(() => {
-    if (!loading) {
-      const timeout = setTimeout(() => setShowSkeleton(false), 180);
-      return () => clearTimeout(timeout);
-    }
-
-    setShowSkeleton(true);
-    return undefined;
+    const delay = loading ? 0 : 180;
+    const timeout = setTimeout(() => setShowSkeleton(loading), delay);
+    return () => clearTimeout(timeout);
   }, [loading]);
 
   return (

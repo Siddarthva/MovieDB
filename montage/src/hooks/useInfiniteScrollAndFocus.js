@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export function useInfiniteScrollAndFocus(speed = 0.5, isPaused = false, direction = 1) {
   const ref = useRef(null);

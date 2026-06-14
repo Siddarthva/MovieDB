@@ -97,13 +97,12 @@ export default function ScrollRow({ label, items, onNavigate, reverse = false })
       },
     });
   }, [cleanItems.length, controls, isMobile, isPaused, measuredWidth, reverse]);
-
   if (!cleanItems.length) {
     return (
       <section style={{ padding: '0 clamp(16px, 4vw, 36px)' }}>
         <h2 style={{ color: 'white', margin: '0 0 14px', fontSize: 'clamp(1.05rem, 3.3vw, 1.25rem)' }}>{label}</h2>
         <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '16px', color: '#6b7280' }}>
-          No titles matched this DNA cluster yet.
+          No titles matched this list yet.
         </div>
       </section>
     );

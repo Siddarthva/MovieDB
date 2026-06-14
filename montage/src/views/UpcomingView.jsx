@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Calendar } from 'lucide-react';
-import { getStatus, getDaysUntil, formatReleaseDate, groupByMonth } from '../engine/timeEngine';
+import { getStatus, formatReleaseDate, groupByMonth } from '../engine/timeEngine';
 import { getMostAnticipated } from '../engine/anticipationEngine';
 import TitleCard from '../components/ui/TitleCard';
 import { useTitles } from '../hooks/useTitles';

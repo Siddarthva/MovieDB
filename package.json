@@ -1,0 +1,19 @@
+{
+  "name": "moviedb-root",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "backend",
+    "admin",
+    "montage",
+    "e2e"
+  ],
+  "scripts": {
+    "start": "npm run start --workspace=backend",
+    "dev": "concurrently \"npm run start --workspace=backend\" \"npm run dev --workspace=admin\" \"npm run dev --workspace=montage\"",
+    "seed": "npm run seed --workspace=backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

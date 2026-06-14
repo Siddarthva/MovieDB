@@ -1,7 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import TitleCard from '../components/ui/TitleCard';
-import { staggerContainer, staggerItem } from '../constants/designSystem';
 import { useMemo } from 'react';
 import { useCatalog } from '../hooks/useCatalog';
 
@@ -9,10 +8,10 @@ export default function PersonView({ personId, onNavigate }) {
   const { people, titles, loading } = useCatalog();
   const person = useMemo(() => people.find((item) => item.id === personId) ?? null, [people, personId]);
   const filmography = useMemo(() => titles.filter((title) =>
-    title.people.directorId === personId ||
-    title.people.composerId === personId ||
-    title.people.writerIds.includes(personId) ||
-    title.people.castIds.includes(personId)
+    title.people?.directorId === personId ||
+    title.people?.composerId === personId ||
+    (title.people?.writerIds ?? []).includes(personId) ||
+    (title.people?.castIds ?? []).includes(personId)
   ).sort((a, b) => b.year - a.year), [titles, personId]);
 
   if (loading) return (

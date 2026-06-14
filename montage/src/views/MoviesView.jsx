@@ -25,7 +25,7 @@ export default function MoviesView({ onNavigate }) {
     <div style={{ maxWidth: '1560px', margin: '0 auto', padding: '16px 0 72px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '24px', padding: '0 clamp(16px, 4vw, 36px)' }}>
         <div>
-          <p className="label-mini" style={{ margin: '0 0 6px' }}>DNA Categories</p>
+          <p className="label-mini" style={{ margin: '0 0 6px' }}>Curated Selections</p>
           <h1 style={{ fontSize: 'clamp(1.5rem, 6vw, 2.25rem)', lineHeight: 1.1 }}>Movies · Infinite Rows</h1>
         </div>
       </div>

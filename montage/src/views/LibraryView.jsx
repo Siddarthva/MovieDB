@@ -9,8 +9,6 @@ const DEFAULT = {
   type: 'all',
   genre: 'all',
   status: 'all',
-  minScore: 0,
-  minIntensity: 0,
   sortBy: 'popularity',
 };
 
@@ -63,10 +61,7 @@ export default function LibraryView({ onNavigate }) {
     if (f.type !== 'all') r = r.filter(t => t.type === f.type);
     if (f.genre !== 'all') r = r.filter(t => t.classification?.genres.includes(f.genre));
     if (f.status !== 'all') r = r.filter(t => getStatus(t) === f.status);
-    if (f.minScore > 0) r = r.filter(t => (t.metrics?.ratings.cineScore ?? 0) >= f.minScore);
-    if (f.minIntensity > 0) r = r.filter(t => (t.dna?.intensity ?? 0) >= f.minIntensity);
     r.sort((a, b) => {
-      if (f.sortBy === 'cineScore') return (b.metrics?.ratings.cineScore ?? 0) - (a.metrics?.ratings.cineScore ?? 0);
       if (f.sortBy === 'year') return b.year - a.year;
       if (f.sortBy === 'title') return a.title.localeCompare(b.title);
       return (b.metrics?.popularity ?? 0) - (a.metrics?.popularity ?? 0);
@@ -147,12 +142,9 @@ export default function LibraryView({ onNavigate }) {
               <Select label="Sort by" value={f.sortBy} onChange={v => set('sortBy', v)}
                 options={[
                   { value: 'popularity', label: 'Popular' },
-                  { value: 'cineScore', label: 'Highest Rated' },
                   { value: 'year', label: 'Newest' },
                   { value: 'title', label: 'A – Z' },
                 ]} />
-              <Slider label="Min CineScore" value={f.minScore} min={0} max={99} onChange={v => set('minScore', v)} />
-              <Slider label="Min Intensity" value={f.minIntensity} min={0} max={10} onChange={v => set('minIntensity', v)} />
             </div>
           </motion.div>
         )}
