@@ -3,3 +3,6 @@
 **/.env.*
 dist/
 build/
+!**/.env.example
+coverage/
+*.log

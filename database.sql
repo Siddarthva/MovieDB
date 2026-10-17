@@ -1,3 +1,6 @@
+-- !! DESTRUCTIVE !! This script DROPS and recreates every table. Use it only on an empty or
+-- throw-away database. For an existing database apply db/migrations/*.sql instead.
+
 -- Drop tables if they exist to clean setup
 DROP TABLE IF EXISTS title_credits CASCADE;
 DROP TABLE IF EXISTS title_genres CASCADE;

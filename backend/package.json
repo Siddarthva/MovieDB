@@ -2,13 +2,22 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "seed": "node seed.js"
+    "seed": "node seed.js",
+    "test": "node --test --test-reporter=spec \"test/**/*.test.js\"",
+    "dev": "node --watch server.js",
+    "dev:fake": "node dev/fake-server.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^16.4.7",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.1",
+    "helmet": "^8.3.0",
+    "zod": "^4.6.7"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

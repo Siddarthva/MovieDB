@@ -1,48 +1,91 @@
 import { getStatus } from '../engine/timeEngine';
-import { MOVIES } from '../../../movies.js';
-import { SHOWS } from '../../../backend/data/shows.js';
-import { PEOPLE } from '../../../people.js';
-import { GENRES } from '../../../genres.js';
 
 export const TYPE_MOVIE = 'movie';
 export const TYPE_SHOW = 'show';
 
-const BASE_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+/**
+ * Where the browser sends API calls. Defaults to same-origin "/api" (Vite proxies it in development,
+ * nginx proxies it in Docker). Set VITE_API_URL only for a cross-origin API.
+ */
+const BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+const PAGE_SIZE = 200;
+const MAX_CATALOG = 2000;
 
-const catalogCache = {
-  promise: null,
-  value: null,
-};
+/** Failure talking to the API. `kind` is 'network' | 'server' | 'not_found' | 'client'. */
+export class ApiError extends Error {
+  constructor({ status = 0, code = 'unknown', message, requestId = null, kind }) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.requestId = requestId;
+    this.kind = kind ?? (status === 404 ? 'not_found' : status >= 500 || status === 0 ? 'server' : 'client');
+  }
+
+  /** True when retrying later could plausibly succeed. */
+  get retryable() {
+    return this.kind === 'network' || this.status >= 500 || this.status === 429;
+  }
+}
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
-const asNumber = (value, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
+
+async function requestRaw(path, { signal } = {}) {
+  let response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, { headers: { Accept: 'application/json' }, signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
+    throw new ApiError({ kind: 'network', code: 'network_error', message: 'Cannot reach the MovieDB service. Check your connection.' });
+  }
+
+  if (!response.ok) {
+    let body = null;
+    try {
+      body = await response.json();
+    } catch {
+      /* non-JSON error page (e.g. proxy) */
+    }
+    throw new ApiError({
+      status: response.status,
+      code: body?.error?.code ?? 'http_error',
+      message: body?.error?.message ?? body?.message ?? `Request failed (${response.status}).`,
+      requestId: body?.error?.requestId ?? response.headers.get('x-request-id'),
+    });
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    // A 200 that is not JSON usually means the API is not reachable at this path (SPA index.html served instead).
+    throw new ApiError({ status: 502, code: 'bad_response', message: 'The server returned an unexpected response. Is the API configured correctly?' });
+  }
+  return { data, total: Number(response.headers.get('x-total-count')) };
+}
+
+const request = async (path, options) => (await requestRaw(path, options)).data;
 
 function normalizeTitle(title) {
   const media = title?.media ?? {};
   const people = title?.people ?? {};
-  const normalized = {
+  const poster = title?.poster ?? media.poster ?? null;
+  const backdrop = title?.backdrop ?? media.backdrop ?? null;
+  const trailer = title?.trailer ?? media.trailer ?? null;
+  return {
     ...title,
     releaseDate: title?.releaseDate ?? title?.release_date ?? null,
-    poster: title?.poster ?? media?.poster ?? null,
-    backdrop: title?.backdrop ?? media?.backdrop ?? null,
-    trailer: title?.trailer ?? media?.trailer ?? null,
-    posterUrl: title?.poster ?? media?.poster ?? null,
-    backdropUrl: title?.backdrop ?? media?.backdrop ?? null,
-    media: {
-      ...media,
-      poster: title?.poster ?? media?.poster ?? null,
-      backdrop: title?.backdrop ?? media?.backdrop ?? null,
-      trailer: title?.trailer ?? media?.trailer ?? null,
-    },
-    details: {
-      ...(title?.details ?? {}),
-      synopsis: title?.details?.synopsis ?? title?.synopsis ?? '',
-      runtime: title?.details?.runtime ?? title?.runtime ?? null,
-    },
+    poster,
+    backdrop,
+    trailer,
+    posterUrl: poster,
+    backdropUrl: backdrop,
+    media: { ...media, poster, backdrop, trailer },
+    details: { ...(title?.details ?? {}), synopsis: title?.details?.synopsis ?? title?.synopsis ?? '', runtime: title?.details?.runtime ?? title?.runtime ?? null },
     classification: {
       ...(title?.classification ?? {}),
       genres: asArray(title?.classification?.genres),
-      rating: title?.classification?.rating ?? title?.censor_rating ?? title?.rating ?? 'NR',
+      rating: title?.classification?.rating ?? title?.censor_rating ?? 'NR',
     },
     people: {
       directorId: people.directorId ?? null,
@@ -51,239 +94,100 @@ function normalizeTitle(title) {
       castIds: asArray(people.castIds),
     },
   };
-
-  return normalized;
 }
 
-export function buildDnaCategories(masterTitles) {
-  const titles = asArray(masterTitles).map(normalizeTitle);
-  const cutoff = new Date('2026-04-05T00:00:00Z');
+const normalizePerson = (person) => ({ ...person, roles: asArray(person?.roles), image: person?.image ?? person?.imageUrl ?? person?.image_url ?? null });
 
-  // 1. Trending Movies (Highly popular movies)
-  const trendingMovies = titles
-    .filter((t) => t.type === 'movie')
-    .sort((a, b) => (b.metrics?.popularity ?? 0) - (a.metrics?.popularity ?? 0))
-    .slice(0, 10);
-
-  // 2. Latest Releases (Released recently)
-  const latestReleases = titles
-    .filter((t) => t.releaseDate && new Date(t.releaseDate) <= cutoff)
-    .sort((a, b) => b.year - a.year || new Date(b.releaseDate) - new Date(a.releaseDate))
-    .slice(0, 10);
-
-  // 3. Popular Shows (TV Shows sorted by popularity)
-  const popularShows = titles
-    .filter((t) => t.type === 'show')
-    .sort((a, b) => (b.metrics?.popularity ?? 0) - (a.metrics?.popularity ?? 0))
-    .slice(0, 10);
-
-  // 4. Critically Acclaimed (Sorted by critic/cinescore or ratings)
-  const criticallyAcclaimed = titles
-    .sort((a, b) => (b.metrics?.ratings?.critic ?? 0) - (a.metrics?.ratings?.critic ?? 0))
-    .slice(0, 10);
-
-  // 5. Recently Added (By release date or year desc)
-  const recentlyAdded = titles
-    .sort((a, b) => b.year - a.year)
-    .slice(0, 10);
-
-  return [
-    {
-      id: 'trending_movies',
-      label: 'Trending Movies',
-      titles: trendingMovies,
-    },
-    {
-      id: 'latest_releases',
-      label: 'Latest Releases',
-      titles: latestReleases,
-    },
-    {
-      id: 'popular_shows',
-      label: 'Popular TV Shows',
-      titles: popularShows,
-    },
-    {
-      id: 'critically_acclaimed',
-      label: 'Critically Acclaimed',
-      titles: criticallyAcclaimed,
-    },
-    {
-      id: 'recently_added',
-      label: 'Recently Added',
-      titles: recentlyAdded,
-    },
-  ];
-}
-
-async function request(path) {
-
-  const response = await fetch(`${BASE_URL}${path}`, {
-    headers: { Accept: 'application/json' },
+const qs = (params) => {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '' && value !== 'all') search.set(key, String(value));
   });
+  const text = search.toString();
+  return text ? `?${text}` : '';
+};
 
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed: ${response.status}`);
+/** Every title, fetched in pages of PAGE_SIZE (bounded). */
+async function fetchAllTitles() {
+  const items = [];
+  let total = Infinity;
+  while (items.length < Math.min(total, MAX_CATALOG)) {
+    const page = await requestRaw(`/titles${qs({ limit: PAGE_SIZE, offset: items.length })}`);
+    const rows = asArray(page.data);
+    items.push(...rows);
+    total = Number.isFinite(page.total) ? page.total : items.length;
+    if (rows.length < PAGE_SIZE) break;
   }
-
-  return response.json();
+  return items.map(normalizeTitle);
 }
 
-function loadLocalCatalog() {
-  const normalizedTitles = [...asArray(MOVIES), ...asArray(SHOWS)].map(normalizeTitle);
-  const genres = Object.entries(GENRES).map(([id, name]) => ({ id, name }));
-  const people = asArray(PEOPLE).map((person) => ({
-    ...person,
-    imageUrl: person.imageUrl ?? person.image_url ?? person.image ?? null,
-    image_url: person.image_url ?? person.imageUrl ?? person.image ?? null,
-    roles: asArray(person.roles),
-  }));
+let catalogPromise = null;
 
-  return {
-    titles: normalizedTitles,
-    people,
-    genres,
-    categories: buildDnaCategories(normalizedTitles),
-    titleLookup: new Map(normalizedTitles.map((title) => [title.id, title])),
-    peopleLookup: new Map(people.map((person) => [person.id, person])),
-  };
-}
-
-async function loadCatalog() {
-  if (!catalogCache.promise) {
-    catalogCache.promise = (async () => {
-      try {
-        const [categories, titles, people, genres] = await Promise.all([
-          request('/home'),
-          request('/titles').catch(() => []),
-          request('/people').catch(() => []),
-          request('/genres').catch(() => []),
-        ]);
-
-        const normalizedTitles = asArray(titles).map(normalizeTitle);
-        const catalog = {
-          titles: normalizedTitles,
-          people: asArray(people),
+/** Home rows + full title list + people + genres. Cached; a failure is NOT cached, so retry works. */
+export function getCatalog() {
+  if (!catalogPromise) {
+    catalogPromise = Promise.all([request('/home'), fetchAllTitles(), request('/people'), request('/genres')])
+      .then(([categories, titles, people, genres]) => {
+        const normalizedPeople = asArray(people).map(normalizePerson);
+        return {
+          categories: asArray(categories).map((row) => ({ ...row, titles: asArray(row.titles).map(normalizeTitle) })),
+          titles,
+          people: normalizedPeople,
           genres: asArray(genres),
-          categories,
-          titleLookup: new Map(normalizedTitles.map((title) => [title.id, title])),
-          peopleLookup: new Map(asArray(people).map((person) => [person.id, person])),
+          titleLookup: new Map(titles.map((title) => [title.id, title])),
+          peopleLookup: new Map(normalizedPeople.map((person) => [person.id, person])),
         };
-
-        return catalog;
-      } catch {
-        return loadLocalCatalog();
-      }
-    })();
+      })
+      .catch((error) => {
+        catalogPromise = null;
+        throw error;
+      });
   }
-
-  catalogCache.value = await catalogCache.promise;
-  return catalogCache.value;
+  return catalogPromise;
 }
 
-export async function getCatalog() {
-  return loadCatalog();
+export function resetCatalog() {
+  catalogPromise = null;
 }
 
-export async function getHealth() {
-  if (!BASE_URL) return { ok: true, database: 'local' };
-  return request('/health');
-}
+export const getHealth = () => request('/health/ready');
 
 export async function getTitles(type = null) {
-  const catalog = await loadCatalog();
+  const catalog = await getCatalog();
   return type ? catalog.titles.filter((title) => title.type === type) : catalog.titles;
 }
 
-export async function getPeople() {
-  const catalog = await loadCatalog();
-  return catalog.people;
-}
-
-export async function getDnaCategories() {
-  const catalog = await loadCatalog();
-  return catalog.categories;
-}
-
-export async function getGenres() {
-  const catalog = await loadCatalog();
-  return catalog.genres;
-}
-
-export async function getTitle(id) {
-  const catalog = await loadCatalog();
-  return catalog.titleLookup.get(id) ?? null;
-}
-
-export async function getPerson(id) {
-  const catalog = await loadCatalog();
-  return catalog.peopleLookup.get(id) ?? null;
-}
-
-export async function getFilmography(personId) {
-  const catalog = await loadCatalog();
-  return catalog.titles
-    .filter((title) =>
-      title.people?.directorId === personId ||
-      title.people?.composerId === personId ||
-      asArray(title.people?.writerIds).includes(personId) ||
-      asArray(title.people?.castIds).includes(personId),
-    )
-    .sort((a, b) => b.year - a.year);
+export async function getFilmography(personId, options) {
+  return asArray(await request(`/people/${encodeURIComponent(personId)}/credits`, options));
 }
 
 export function isValidTitle(title) {
-  return Boolean(
-    title &&
-    typeof title.id === 'string' &&
-    typeof title.title === 'string' &&
-    (title.type === TYPE_MOVIE || title.type === TYPE_SHOW) &&
-    title.media &&
-    title.classification?.genres,
-  );
+  return Boolean(title && typeof title.id === 'string' && typeof title.title === 'string' && (title.type === TYPE_MOVIE || title.type === TYPE_SHOW));
 }
 
 export function assertType(title, expectedType) {
-  if (!isValidTitle(title)) return false;
-  if (title.type !== expectedType) {
-    console.warn(`[API] Type mismatch: expected "${expectedType}", got "${title.type}" (id: ${title.id})`);
-    return false;
-  }
-  return true;
+  return isValidTitle(title) && title.type === expectedType;
 }
 
 export const api = {
-  getMovies: async () => getTitles(TYPE_MOVIE),
-  getShows: async () => getTitles(TYPE_SHOW),
-  getUpcoming: async () => {
-    const titles = await getTitles();
-    return titles.filter((title) => getStatus(title) === 'upcoming');
-  },
-  getById: async (id) => {
-    const title = await request(`/title/${encodeURIComponent(id)}`);
-    if (!title) throw new Error('Title not found');
-    return normalizeTitle(title);
-  },
-  getAllTitles: async () => getTitles(),
-  getPeople,
-  getGenres,
-  getDnaCategories,
   getCatalog,
   getHealth,
-  getTitle,
-  getPerson,
+  getTitles,
   getFilmography,
-  search: async (query) => {
-    const q = String(query ?? '').trim().toLowerCase();
-    if (!q) return [];
-    const catalog = await loadCatalog();
-    return catalog.titles.filter((title) =>
-      title.title.toLowerCase().includes(q) ||
-      asArray(title.classification?.genres).some((genreId) => genreId.toLowerCase().includes(q)) ||
-      title.people?.directorId?.toLowerCase().includes(q) ||
-      asArray(title.people?.writerIds).some((id) => id.toLowerCase().includes(q)) ||
-      asArray(title.people?.castIds).some((id) => id.toLowerCase().includes(q)),
-    );
+  getMovies: () => getTitles(TYPE_MOVIE),
+  getShows: () => getTitles(TYPE_SHOW),
+  getAllTitles: () => getTitles(),
+  getUpcoming: async () => (await getTitles()).filter((title) => getStatus(title) === 'upcoming'),
+  getGenres: async () => (await getCatalog()).genres,
+  getPeople: async () => (await getCatalog()).people,
+  getById: async (id, options) => normalizeTitle(await request(`/titles/${encodeURIComponent(id)}`, options)),
+  getPerson: async (id, options) => normalizePerson(await request(`/people/${encodeURIComponent(id)}`, options)),
+  getRelated: async (id, options) => asArray(await request(`/titles/${encodeURIComponent(id)}/related?limit=8`, options)).map(normalizeTitle),
+
+  /** Server-side search/filter/sort/paginate. Resolves to { items, total }. */
+  searchTitles: async ({ q, type, genre, year, sort, limit = 24, offset = 0 } = {}, options) => {
+    const { data, total } = await requestRaw(`/titles${qs({ q, type, genre, year, sort, limit, offset })}`, options);
+    return { items: asArray(data).map(normalizeTitle), total: Number.isFinite(total) ? total : asArray(data).length };
   },
+  searchPeople: async (q, options) => asArray(await request(`/people${qs({ q, limit: 8 })}`, options)).map(normalizePerson),
 };

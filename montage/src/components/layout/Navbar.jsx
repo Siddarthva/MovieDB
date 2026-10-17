@@ -1,191 +1,70 @@
-import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import React from 'react';
+import { NavLink, Link } from 'react-router-dom';
 import { Search, Film, Tv, Clock, Library, Home } from 'lucide-react';
 import Logo from '../ui/Logo';
 
 const NAV = [
-  { id: 'home', label: 'Home', icon: Home },
-  { id: 'movies', label: 'Movies', icon: Film },
-  { id: 'shows', label: 'Shows', icon: Tv },
-  { id: 'upcoming', label: 'Upcoming', icon: Clock },
-  { id: 'library', label: 'Library', icon: Library },
+  { to: '/', label: 'Home', icon: Home, end: true },
+  { to: '/movies', label: 'Movies', icon: Film },
+  { to: '/shows', label: 'Shows', icon: Tv },
+  { to: '/upcoming', label: 'Upcoming', icon: Clock },
+  { to: '/library', label: 'Library', icon: Library },
 ];
 
-export default function Navbar({ onNavigate, currentRoute }) {
-  const [isMobile, setIsMobile] = useState(false);
+const linkStyle = ({ isActive }) => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '8px 13px',
+  borderRadius: 'var(--radius-md)',
+  background: isActive ? 'var(--surface-3)' : 'transparent',
+  color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+  fontSize: 'var(--text-sm)',
+  fontWeight: isActive ? 700 : 600,
+  textDecoration: 'none',
+});
 
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 767px)');
-    const update = () => setIsMobile(media.matches);
-    update();
-
-    if (typeof media.addEventListener === 'function') {
-      media.addEventListener('change', update);
-      return () => media.removeEventListener('change', update);
-    }
-
-    media.addListener(update);
-    return () => media.removeListener(update);
-  }, []);
-
-  const mobileTabs = NAV.filter((item) => item.id === 'home' || item.id === 'movies' || item.id === 'shows');
-
+export default function Navbar() {
   return (
     <>
-      <nav
+      <header
         style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          zIndex: 100,
-          background: 'rgba(0,0,0,0.84)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
+          background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+          borderBottom: '1px solid var(--border-muted)',
         }}
       >
-        <div
-          style={{
-            maxWidth: '1560px',
-            margin: '0 auto',
-            padding: isMobile ? '0 16px' : '0 24px',
-            height: isMobile ? '56px' : '60px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-          }}
-        >
-          <Logo onClick={() => onNavigate('home', null)} style={{ marginRight: isMobile ? '0' : '16px' }} />
+        <div style={{ maxWidth: 'var(--content-max)', margin: '0 auto', padding: '0 var(--gutter)', height: 'var(--nav-height)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <Link to="/" aria-label="Montage home" style={{ display: 'inline-flex', marginRight: 'var(--space-4)' }}>
+            <Logo />
+          </Link>
 
-          {!isMobile && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flex: 1 }}>
-              {NAV.map((link) => {
-                const active = currentRoute === link.id;
-                const Icon = link.icon;
-                return (
-                  <motion.button
-                    key={link.id}
-                    whileTap={{ scale: 0.96 }}
-                    onClick={() => onNavigate(link.id, null)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '6px 13px',
-                      borderRadius: '8px',
-                      background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
-                      border: 'none',
-                      color: active ? 'white' : '#6b7280',
-                      fontSize: '13px',
-                      fontWeight: active ? 700 : 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      letterSpacing: '0.01em',
-                    }}
-                    onMouseEnter={(event) => {
-                      if (!active) {
-                        event.currentTarget.style.color = '#d1d5db';
-                        event.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                      }
-                    }}
-                    onMouseLeave={(event) => {
-                      if (!active) {
-                        event.currentTarget.style.color = '#6b7280';
-                        event.currentTarget.style.background = 'transparent';
-                      }
-                    }}
-                  >
-                    <Icon style={{ width: 14, height: 14 }} />
-                    {link.label}
-                  </motion.button>
-                );
-              })}
-            </div>
-          )}
+          <nav aria-label="Primary" className="nav-desktop" style={{ display: 'flex', gap: 2, flex: 1 }}>
+            {NAV.map(({ to, label, icon: Icon, end }) => (
+              <NavLink key={to} to={to} end={end} style={linkStyle}>
+                <Icon aria-hidden="true" style={{ width: 14, height: 14 }} />
+                {label}
+              </NavLink>
+            ))}
+          </nav>
 
-          <div style={{ flex: 1 }} />
+          <div style={{ flex: 1 }} className="nav-spacer" />
 
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            onClick={() => onNavigate('search', null)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: isMobile ? '0' : '7px',
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '8px',
-              padding: isMobile ? '8px' : '7px 14px',
-              color: '#9ca3af',
-              fontSize: '13px',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(event) => {
-              event.currentTarget.style.borderColor = 'rgba(255,255,255,0.16)';
-              event.currentTarget.style.color = 'white';
-            }}
-            onMouseLeave={(event) => {
-              event.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
-              event.currentTarget.style.color = '#9ca3af';
-            }}
-          >
-            <Search style={{ width: 14, height: 14 }} />
-            {!isMobile && 'Search'}
-          </motion.button>
+          <Link to="/search" className="btn" aria-label="Search" style={{ textDecoration: 'none' }}>
+            <Search aria-hidden="true" style={{ width: 14, height: 14 }} />
+            <span className="nav-search-label">Search</span>
+          </Link>
         </div>
-      </nav>
+      </header>
 
-      {isMobile && (
-        <nav
-          style={{
-            position: 'fixed',
-            left: '12px',
-            right: '12px',
-            bottom: '10px',
-            zIndex: 105,
-            borderRadius: '14px',
-            border: '1px solid rgba(255,255,255,0.08)',
-            background: 'rgba(8,8,8,0.9)',
-            backdropFilter: 'blur(14px)',
-            WebkitBackdropFilter: 'blur(14px)',
-            padding: '7px 8px',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-            gap: '6px',
-          }}
-        >
-          {mobileTabs.map((item) => {
-            const Icon = item.icon;
-            const active = currentRoute === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onNavigate(item.id, null)}
-                style={{
-                  border: 'none',
-                  background: active ? 'rgba(255,255,255,0.1)' : 'transparent',
-                  color: active ? '#f8fafc' : '#9ca3af',
-                  borderRadius: '10px',
-                  padding: '7px 4px 6px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '2px',
-                  fontSize: '11px',
-                  fontWeight: active ? 700 : 600,
-                  cursor: 'pointer',
-                }}
-              >
-                <Icon style={{ width: 15, height: 15 }} />
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-      )}
+      <nav aria-label="Primary mobile" className="nav-mobile">
+        {NAV.map(({ to, label, icon: Icon, end }) => (
+          <NavLink key={to} to={to} end={end} className="nav-mobile__item">
+            <Icon aria-hidden="true" style={{ width: 17, height: 17 }} />
+            {label}
+          </NavLink>
+        ))}
+      </nav>
     </>
   );
 }

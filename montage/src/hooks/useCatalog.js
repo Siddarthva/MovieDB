@@ -1,52 +1,49 @@
-import { useEffect, useState } from 'react';
-import { api } from '../api';
+import { useCallback, useEffect, useState } from 'react';
+import { api, resetCatalog } from '../api';
 
 const EMPTY = { titles: [], people: [], genres: [], categories: [] };
+const RETRY_MS = 15000;
 
+/**
+ * Loads the catalog once (shared, cached). On failure it exposes `error` and retries every
+ * RETRY_MS while the page is open. It never substitutes bundled data.
+ */
 export function useCatalog() {
   const [catalog, setCatalog] = useState(EMPTY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isOffline, setIsOffline] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    api.getCatalog().then(
+      (data) => {
+        if (cancelled) return;
+        setCatalog({ titles: data.titles, people: data.people, genres: data.genres, categories: data.categories });
+        setError(null);
+        setLoading(false);
+      },
+      (loadError) => {
+        if (cancelled) return;
+        setError(loadError);
+        setLoading(false);
+      },
+    );
+    return () => { cancelled = true; };
+  }, [attempt]);
 
-    async function load(silent = false) {
-      if (!silent) setLoading(true);
-      try {
-        const data = await api.getCatalog();
-        if (!cancelled) {
-          setCatalog({
-            titles: data.titles ?? [],
-            people: data.people ?? [],
-            genres: data.genres ?? [],
-            categories: data.categories ?? [],
-          });
-          setError(null);
-          setIsOffline(false);
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError);
-          setIsOffline(true);
-        }
-      } finally {
-        if (!cancelled && !silent) setLoading(false);
-      }
-    }
+  useEffect(() => {
+    if (!error?.retryable) return undefined;
+    const timer = setTimeout(() => setAttempt((n) => n + 1), RETRY_MS);
+    return () => clearTimeout(timer);
+  }, [error]);
 
-    load();
-
-    const retryTimer = setInterval(() => {
-      load(true);
-    }, 8000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(retryTimer);
-    };
+  const retry = useCallback(() => {
+    resetCatalog();
+    setLoading(true);
+    setError(null);
+    setAttempt((n) => n + 1);
   }, []);
 
-  return { ...catalog, loading, error, isOffline };
+  return { ...catalog, loading, error, retry };
 }
